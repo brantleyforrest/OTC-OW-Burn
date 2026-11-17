@@ -15,4 +15,8 @@
 _server/secrets/
 _server/data/
 _server/deploy/out/
+_server/dist/
 node_modules/
+
+# Local editor/assistant settings
+.claude/

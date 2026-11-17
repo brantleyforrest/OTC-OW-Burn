@@ -1,0 +1,19 @@
+{
+  "publicDomain": "burn.example.com",
+  "publicPort": 443,
+  "listen": { "host": "127.0.0.1", "port": 8787 },
+  "tls": { "mode": "proxy", "certFile": "", "keyFile": "" },
+  "allowedOrigins": ["https://brantleyforrest.github.io"],
+  "allowLocalOrigins": false,
+  "dataDir": "./data",
+  "limits": { "maxRooms": 200, "maxPlayersPerRoom": 40, "maxSocketsPerAddress": 80, "messagesPerSecond": 10 },
+  "cloudflare": {
+    "enabled": false,
+    "apiToken": "",
+    "zoneId": "",
+    "recordName": "burn.example.com",
+    "proxied": false,
+    "ttl": 60,
+    "checkEverySeconds": 300
+  }
+}

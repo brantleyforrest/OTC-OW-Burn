@@ -1,0 +1,460 @@
+#!/usr/bin/env bash
+# burnctl: manage the Burn server that install.sh set up (install layout 1).
+# Run "burnctl help" for the commands. Commands that change something need sudo.
+set -euo pipefail
+
+APP=burn
+BASE=/opt/burn
+RELEASES=$BASE/releases
+BACKUPS=$BASE/backups
+STATE=$BASE/install.conf
+LAYOUT_FILE=$BASE/LAYOUT
+ETC=/etc/burn
+CONFIG=$ETC/config.json
+DATA=/var/lib/burn
+UNIT=/etc/systemd/system/$APP.service
+CTL=/usr/local/bin/burnctl
+LOCK=/run/lock/burn-install.lock
+CTL_LAYOUT=1
+
+say()  { printf '%s\n' "$*"; }
+warn() { printf 'Warning: %s\n' "$*" >&2; }
+die()  { printf 'Error: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+    cat <<'EOF'
+burnctl: manage the Burn game server
+
+  burnctl status                 Service state, versions, health, and settings at a glance
+  burnctl version                The running release and its engine version
+  burnctl health                 Ask the server for /health
+  burnctl logs [-f] [N]          The last N log lines (default 100); -f keeps following
+
+  sudo burnctl start | stop | restart
+  sudo burnctl rollback [VERSION] [--restore-data]
+                                  Go back to the previous release (or VERSION). With
+                                  --restore-data, also put back the config and data from the
+                                  backup taken when you upgraded away from that release.
+  burnctl releases               Installed releases (* current, - previous)
+  sudo burnctl prune [--keep N]  Remove old releases, keeping N besides the current one
+
+  burnctl config path            Where the config file is
+  sudo burnctl config edit       Edit the config; it is checked before it is saved
+  sudo burnctl config check      Check the config as the service account reads it
+  burnctl proxy caddy|nginx      Print the reverse-proxy site block for this config
+
+  sudo burnctl backup            Save the config and data now
+  burnctl backups                List backups
+  sudo burnctl restore FILE      Put back the config and data from a backup
+
+  sudo burnctl uninstall [--purge]
+                                  Remove the service and releases. The config, data and
+                                  backups stay unless --purge is given.
+
+To upgrade, put the new burn-server-<version>.tar.gz next to its install.sh and run
+  sudo bash install.sh
+EOF
+}
+
+# ---------------------------------------------------------------- shared
+
+need_install() {
+    [ -f "$LAYOUT_FILE" ] || die "The Burn server is not installed here (no $LAYOUT_FILE)."
+    local layout; layout=$(cat "$LAYOUT_FILE")
+    [ "$layout" = "$CTL_LAYOUT" ] || die "This burnctl knows install layout $CTL_LAYOUT, but the install is layout $layout. Use $BASE/current/_server/deploy/burnctl."
+    # shellcheck disable=SC1090
+    . "$STATE"
+    SVC_USER=$STATE_USER
+    NODE=$STATE_NODE
+    KEEP=$STATE_KEEP
+    [ -x "$NODE" ] || die "The node program saved at install ($NODE) is gone. Reinstall: sudo bash install.sh --reinstall --node /path/to/node"
+}
+need_root() { [ "$(id -u)" = 0 ] || die "This needs root: sudo burnctl $*"; }
+take_lock() {
+    mkdir -p "$(dirname "$LOCK")"
+    exec 9>"$LOCK"
+    flock -n 9 || die "An install, upgrade or rollback is already running."
+}
+confirm() {  # confirm "question"  (yes if --yes was given or stdin is not a terminal answer)
+    [ "${ASSUME_YES:-0}" = 1 ] && return 0
+    [ -t 0 ] || die "Needs confirmation; run it in a terminal or add --yes."
+    printf '%s [y/N] ' "$1"
+    local a; read -r a
+    case "$a" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+}
+current_version()  { [ -L "$BASE/current" ]  && basename "$(readlink "$BASE/current")"  || true; }
+previous_version() { [ -L "$BASE/previous" ] && basename "$(readlink "$BASE/previous")" || true; }
+release_field() {  # release_field VERSION FIELD
+    sed -n "s/^$2=//p" "$RELEASES/$1/RELEASE" 2>/dev/null | head -n 1
+}
+as_user() {
+    if [ "$(id -u)" != 0 ]; then "$@"; return; fi
+    if command -v runuser >/dev/null 2>&1; then runuser -u "$SVC_USER" -- "$@"
+    else su -s /bin/sh "$SVC_USER" -c "$(printf '%q ' "$@")"; fi
+}
+config_info() {  # sets TLS_MODE, PUBLIC_DOMAIN, PUBLIC_PORT, LISTEN_HOST, LISTEN_PORT, DATA_DIR, HEALTH_URL
+    local out
+    out=$("$NODE" "$BASE/current/_server/tools/config-info.js" --config "$CONFIG") || return 1
+    eval "$out"
+}
+health() {  # health [WAIT_SECONDS]
+    "$NODE" "$BASE/current/_server/tools/health.js" --config "$CONFIG" --wait "${1:-0}"
+}
+# Quick stops and starts can trip systemd's start limit; clear it before starting on purpose.
+svc_start() { systemctl reset-failed "$APP" 2>/dev/null || true; systemctl start "$APP"; }
+set_link() { ln -sfn "$2" "$1.new" && mv -Tf "$1.new" "$1"; }
+make_backup() {  # make_backup LABEL -> prints the file name
+    local file items
+    file=$BACKUPS/$(date -u +%Y%m%dT%H%M%SZ)-$1.tar.gz
+    items=()
+    [ -f "$CONFIG" ] && items+=("${CONFIG#/}")
+    [ -d "$DATA" ] && items+=("${DATA#/}")
+    [ "${#items[@]}" -gt 0 ] || die "There is nothing to back up."
+    install -d -m 700 -o root -g root "$BACKUPS"
+    (umask 077; tar -czf "$file" -C / "${items[@]}")
+    printf '%s\n' "$file"
+}
+restore_backup() {  # restore_backup FILE  (service must be stopped)
+    local file=$1 stamp list
+    list=$(tar -tzf "$file" 2>/dev/null) || die "$file is not a readable backup."
+    if grep -qvE "^(${ETC#/}|${DATA#/})(/|$)" <<<"$list"; then
+        die "$file holds files outside $ETC and $DATA; not restoring it."
+    fi
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    if [ -d "$DATA" ] && grep -qE "^${DATA#/}(/|$)" <<<"$list"; then
+        mv -T "$DATA" "$DATA.before-restore-$stamp"
+        say "The data as it was is in $DATA.before-restore-$stamp."
+    fi
+    tar -xzf "$file" -C /
+    say "Restored the config and data from $file."
+}
+
+# ---------------------------------------------------------------- commands
+
+cmd_status() {
+    need_install
+    local cur prev active sub since mem pid
+    cur=$(current_version); prev=$(previous_version)
+    active=$(systemctl show -p ActiveState --value "$APP" 2>/dev/null || echo unknown)
+    sub=$(systemctl show -p SubState --value "$APP" 2>/dev/null || true)
+    since=$(systemctl show -p ActiveEnterTimestamp --value "$APP" 2>/dev/null || true)
+    mem=$(systemctl show -p MemoryCurrent --value "$APP" 2>/dev/null || true)
+    pid=$(systemctl show -p MainPID --value "$APP" 2>/dev/null || true)
+    say "Service:   $active ($sub)$( [ "$active" = active ] && [ -n "$since" ] && printf ', since %s' "$since")"
+    if [ "$active" = active ]; then
+        [ "${pid:-0}" != 0 ] && say "Process:   $pid"
+        case "$mem" in ''|*[!0-9]*) ;; *) say "Memory:    $((mem / 1024 / 1024)) MB of 256 MB" ;; esac
+    fi
+    say "Enabled:   $(systemctl is-enabled "$APP" 2>/dev/null || echo no)"
+    say "Release:   ${cur:-none} (engine $(release_field "$cur" engine))"
+    say "Previous:  ${prev:-none}"
+    say "Node:      $NODE ($("$NODE" -p 'process.versions.node' 2>/dev/null || echo '?'))"
+    if [ -r "$CONFIG" ] && config_info 2>/dev/null; then
+        say "Public:    $( [ "$TLS_MODE" = none ] && echo ws || echo wss)://$PUBLIC_DOMAIN$( [ "$PUBLIC_PORT" = 443 ] || printf ':%s' "$PUBLIC_PORT")/ws  (tls.mode $TLS_MODE)"
+        [ "$TLS_MODE" = files ] || say "Listening: $LISTEN_HOST:$LISTEN_PORT"
+        say "Data:      $DATA_DIR"
+        printf 'Health:    '
+        health 0 || true
+    else
+        say "Config:    $CONFIG (cannot read it as $(id -un); try sudo)"
+    fi
+}
+
+cmd_version() {
+    need_install
+    local cur; cur=$(current_version)
+    [ -n "$cur" ] || die "No current release."
+    say "burn-server $cur (engine $(release_field "$cur" engine), built $(release_field "$cur" built))"
+}
+
+cmd_health() {
+    need_install
+    [ -r "$CONFIG" ] || die "Cannot read $CONFIG; try sudo."
+    health "${1:-0}"
+}
+
+cmd_logs() {
+    local follow=() n=100
+    for a in "$@"; do
+        case "$a" in
+            -f|--follow) follow=(-f) ;;
+            *[!0-9]*|'') die "Usage: burnctl logs [-f] [N]" ;;
+            *) n=$a ;;
+        esac
+    done
+    exec journalctl -u "$APP" -n "$n" --no-pager "${follow[@]}"
+}
+
+cmd_service() {  # start | stop | restart
+    need_root "$1"; need_install
+    [ "$1" = stop ] || systemctl reset-failed "$APP" 2>/dev/null || true
+    systemctl "$1" "$APP"
+    if [ "$1" = stop ]; then say "Stopped."; return; fi
+    if health 20; then :; else
+        journalctl -u "$APP" -n 20 --no-pager >&2 || true
+        die "The server did not become healthy. See: burnctl logs"
+    fi
+}
+
+cmd_releases() {
+    need_install
+    local cur prev v mark
+    cur=$(current_version); prev=$(previous_version)
+    for v in $(ls -1 "$RELEASES" | grep -v '^\.' | sort -V -r); do
+        mark=' '; [ "$v" = "$cur" ] && mark='*'; [ "$v" = "$prev" ] && mark='-'
+        say "$mark $v  (engine $(release_field "$v" engine), built $(release_field "$v" built))"
+    done
+}
+
+cmd_rollback() {
+    need_root rollback; need_install
+    local target='' restore=0 cur was_active=0 backup='' data_backup
+    for a in "$@"; do
+        case "$a" in
+            --restore-data) restore=1 ;;
+            -y|--yes) ASSUME_YES=1 ;;
+            -*) die "Unknown option $a" ;;
+            *) target=$a ;;
+        esac
+    done
+    take_lock
+    cur=$(current_version)
+    [ -n "$target" ] || target=$(previous_version)
+    [ -n "$target" ] || die "There is no previous release to go back to. See: burnctl releases"
+    [ "$target" != "$cur" ] || die "$target is already the current release."
+    [ -f "$RELEASES/$target/_server/server.js" ] || die "Release $target is not installed. See: burnctl releases"
+
+    if [ "$restore" = 1 ]; then
+        # The backup install.sh took when it upgraded away from $target.
+        backup=$(ls -1t "$BACKUPS"/*-upgrade-from-"$target"-to-*.tar.gz 2>/dev/null | head -n 1 || true)
+        [ -n "$backup" ] || die "No backup from an upgrade away from $target was found in $BACKUPS."
+        say "Will restore the config and data from $(basename "$backup")."
+        say "Anything saved since then (such as new leaderboard rows) is set aside, not kept."
+    fi
+    confirm "Switch from $cur to $target?" || { say "Stopped."; exit 1; }
+
+    systemctl is-active --quiet "$APP" && was_active=1
+    data_backup=$(make_backup "before-rollback-$cur-to-$target")
+    say "Saved the config and data to $data_backup."
+    systemctl stop "$APP" 2>/dev/null || true
+
+    undo() {
+        warn "Going back to $cur."
+        systemctl stop "$APP" 2>/dev/null || true
+        restore_backup "$data_backup" >/dev/null
+        set_link "$BASE/current" "releases/$cur"
+        set_link "$BASE/previous" "releases/$target"
+        [ "$was_active" = 1 ] && svc_start && health 20 || true
+    }
+
+    [ -n "$backup" ] && restore_backup "$backup"
+    if ! "$NODE" "$RELEASES/$target/_server/tools/migrate.js" --config "$CONFIG" --data "$DATA" --from "$cur" --to "$target"; then
+        undo
+        die "Release $target cannot use the current data (see above). Try: sudo burnctl rollback $target --restore-data"
+    fi
+    chown -R "$SVC_USER:$(id -gn "$SVC_USER")" "$DATA"
+    if ! as_user "$NODE" "$RELEASES/$target/_server/server.js" --config "$CONFIG" --check; then
+        undo
+        die "The config does not work with release $target (see above)."
+    fi
+
+    set_link "$BASE/current" "releases/$target"
+    set_link "$BASE/previous" "releases/$cur"
+    systemctl daemon-reload
+    if [ "$was_active" = 1 ]; then
+        svc_start
+        if ! health 20; then
+            journalctl -u "$APP" -n 20 --no-pager >&2 || true
+            undo
+            die "Release $target did not pass its health check; back on $cur."
+        fi
+    else
+        say "The service was stopped, so it stays stopped."
+    fi
+    say "Now on $target. 'sudo burnctl rollback' again goes back to $cur."
+}
+
+cmd_prune() {
+    need_root prune; need_install
+    local keep=$KEEP cur prev room n=0 v
+    case "${1:-}" in
+        --keep) [ -n "${2:-}" ] || die "--keep needs a number."; keep=$2 ;;
+        '') ;;
+        *) die "Usage: sudo burnctl prune [--keep N]" ;;
+    esac
+    case "$keep" in *[!0-9]*|'') die "--keep needs a whole number." ;; esac
+    take_lock
+    cur=$(current_version); prev=$(previous_version)
+    room=$keep; [ -n "$prev" ] && room=$(( keep > 0 ? keep - 1 : 0 ))
+    for v in $(ls -1 "$RELEASES" | grep -v '^\.' | grep -vxF "$cur" | grep -vxF "${prev:-/}" | sort -V -r || true); do
+        n=$((n + 1))
+        if [ "$n" -gt "$room" ]; then rm -rf "${RELEASES:?}/$v"; say "Removed $v."; fi
+    done
+    rm -rf "$RELEASES"/.unpack-* "$RELEASES"/.replaced-* "$RELEASES"/.failed-*
+    [ "$n" -gt "$room" ] || say "Nothing to remove (keeping $keep besides the current release; the previous one is always kept)."
+}
+
+cmd_config() {
+    case "${1:-}" in
+        path) say "$CONFIG" ;;
+        check)
+            need_root "config check"; need_install
+            as_user "$NODE" "$BASE/current/_server/server.js" --config "$CONFIG" --check ;;
+        edit)
+            need_root "config edit"; need_install
+            local tmp editor out
+            editor=${VISUAL:-${EDITOR:-}}
+            [ -n "$editor" ] || { command -v nano >/dev/null && editor=nano || editor=vi; }
+            tmp=$(mktemp "$ETC/.config-edit-XXXXXX.json")
+            trap 'rm -f "$tmp"' EXIT
+            cp "$CONFIG" "$tmp"; chmod 640 "$tmp"; chown "root:$(id -gn "$SVC_USER")" "$tmp"
+            while :; do
+                $editor "$tmp"
+                if cmp -s "$tmp" "$CONFIG"; then say "No changes."; return; fi
+                if out=$(as_user "$NODE" "$BASE/current/_server/server.js" --config "$tmp" --check 2>&1); then
+                    break
+                fi
+                printf '%s\n' "$out" >&2
+                confirm "The config has a problem. Edit it again? (No throws the changes away)" || { say "Changes thrown away."; return 1; }
+            done
+            cp -p "$CONFIG" "$ETC/config.json.prev"
+            mv -f "$tmp" "$CONFIG"
+            say "Saved. The old version is $ETC/config.json.prev."
+            if systemctl is-active --quiet "$APP" && confirm "Restart the server to use it?"; then
+                cmd_service restart
+            else
+                say "It takes effect at the next restart: sudo burnctl restart"
+            fi ;;
+        *) die "Usage: burnctl config path | edit | check" ;;
+    esac
+}
+
+cmd_proxy() {
+    need_install
+    [ -r "$CONFIG" ] || die "Cannot read $CONFIG; try sudo."
+    config_info || exit 1
+    [ "$TLS_MODE" = proxy ] || warn "tls.mode is \"$TLS_MODE\", not \"proxy\"; a reverse proxy is not used in that mode."
+    local host=$LISTEN_HOST
+    [ "$host" = 0.0.0.0 ] && host=127.0.0.1
+    case "${1:-}" in
+        caddy)
+            cat <<EOF
+# Burn game server. Add to the Caddyfile, then: sudo systemctl reload caddy
+$PUBLIC_DOMAIN$( [ "$PUBLIC_PORT" = 443 ] || printf ':%s' "$PUBLIC_PORT") {
+    reverse_proxy $host:$LISTEN_PORT
+}
+EOF
+            ;;
+        nginx)
+            cat <<EOF
+# Burn game server. Save as /etc/nginx/sites-available/burn, link it into sites-enabled,
+# set the two certificate lines, then: sudo nginx -t && sudo systemctl reload nginx
+server {
+    listen $PUBLIC_PORT ssl;
+    server_name $PUBLIC_DOMAIN;
+    # ssl_certificate     /path/to/fullchain.pem;
+    # ssl_certificate_key /path/to/privkey.pem;
+    location / {
+        proxy_pass http://$host:$LISTEN_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_read_timeout 3600s;
+    }
+}
+EOF
+            ;;
+        *) die "Usage: burnctl proxy caddy|nginx" ;;
+    esac
+}
+
+cmd_backup() {
+    need_root backup; need_install
+    local f; f=$(make_backup "manual-$(current_version)")
+    say "Saved the config and data to $f."
+}
+
+cmd_backups() {
+    [ -d "$BACKUPS" ] || { say "No backups."; return; }
+    [ -r "$BACKUPS" ] || die "Cannot read $BACKUPS; try sudo."
+    local any=0 f
+    for f in $(ls -1t "$BACKUPS"/*.tar.gz 2>/dev/null || true); do
+        any=1
+        printf '%s  %s\n' "$(du -h "$f" | cut -f1)" "$f"
+    done
+    [ "$any" = 1 ] || say "No backups."
+}
+
+cmd_restore() {
+    need_root restore; need_install
+    local file=${1:-} was_active=0 safety
+    [ -n "$file" ] || die "Usage: sudo burnctl restore FILE   (see: burnctl backups)"
+    [ -f "$file" ] || { [ -f "$BACKUPS/$file" ] && file=$BACKUPS/$file; } || die "No such backup: $file"
+    take_lock
+    confirm "Put back the config and data from $(basename "$file")? The data as it is now is set aside." || { say "Stopped."; exit 1; }
+    systemctl is-active --quiet "$APP" && was_active=1
+    safety=$(make_backup "before-restore")
+    say "Saved the config and data as they are now to $safety."
+    systemctl stop "$APP" 2>/dev/null || true
+    restore_backup "$file"
+    "$NODE" "$BASE/current/_server/tools/migrate.js" --config "$CONFIG" --data "$DATA" --from "$(current_version)" --to "$(current_version)" \
+        || die "The restored data does not work with this release (see above). Restore $safety to undo."
+    chown -R "$SVC_USER:$(id -gn "$SVC_USER")" "$DATA"
+    if [ "$was_active" = 1 ]; then svc_start; health 20 || die "Not healthy after the restore. See: burnctl logs"; fi
+    say "Done."
+}
+
+cmd_uninstall() {
+    need_root uninstall; need_install
+    local purge=0
+    for a in "$@"; do
+        case "$a" in --purge) purge=1 ;; -y|--yes) ASSUME_YES=1 ;; *) die "Usage: sudo burnctl uninstall [--purge]" ;; esac
+    done
+    take_lock
+    if [ "$purge" = 1 ]; then
+        confirm "Remove the Burn server AND its config, data, backups, and the $SVC_USER account? This cannot be undone." || { say "Stopped."; exit 1; }
+    else
+        confirm "Remove the Burn server? The config ($ETC), data ($DATA) and backups ($BACKUPS) stay." || { say "Stopped."; exit 1; }
+    fi
+    systemctl disable --now "$APP" 2>/dev/null || true
+    rm -f "$UNIT" "$UNIT.bak"
+    rm -rf "/etc/systemd/system/$APP.service.d"
+    systemctl daemon-reload
+    rm -rf "${RELEASES:?}" "$BASE/current" "$BASE/previous" "$BASE/current.new" "$BASE/previous.new" "$STATE" "$LAYOUT_FILE"
+    if [ "$purge" = 1 ]; then
+        rm -rf "${BACKUPS:?}" "$BASE" "$ETC" "$DATA"
+        rm -rf "$DATA".failed-* "$DATA".before-restore-* 2>/dev/null || true
+        if id -u "$SVC_USER" >/dev/null 2>&1 && [ "$SVC_USER" != root ]; then userdel "$SVC_USER" 2>/dev/null || warn "Could not remove the account $SVC_USER."; fi
+        say "Removed everything."
+    else
+        say "Removed the service and releases. Kept $ETC, $DATA and $BACKUPS."
+        say "A later 'sudo bash install.sh' picks the config and data up again."
+    fi
+    rm -f "$CTL"
+}
+
+# ---------------------------------------------------------------- main
+
+ASSUME_YES=0
+cmd=${1:-help}
+[ $# -gt 0 ] && shift
+case "$cmd" in
+    status) cmd_status ;;
+    version|--version) cmd_version ;;
+    health) cmd_health "$@" ;;
+    logs|log) cmd_logs "$@" ;;
+    start|stop|restart) cmd_service "$cmd" ;;
+    rollback) cmd_rollback "$@" ;;
+    releases) cmd_releases ;;
+    prune) cmd_prune "$@" ;;
+    config) cmd_config "$@" ;;
+    proxy) cmd_proxy "$@" ;;
+    backup) cmd_backup ;;
+    backups) cmd_backups ;;
+    restore) cmd_restore "$@" ;;
+    uninstall) cmd_uninstall "$@" ;;
+    help|-h|--help) usage ;;
+    *) usage >&2; exit 2 ;;
+esac

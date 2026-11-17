@@ -1,0 +1,19 @@
+{
+  "publicDomain": "localhost",
+  "publicPort": 8787,
+  "listen": { "host": "127.0.0.1", "port": 8787 },
+  "tls": { "mode": "none", "certFile": "", "keyFile": "" },
+  "allowedOrigins": [],
+  "allowLocalOrigins": true,
+  "dataDir": "./data",
+  "limits": { "maxRooms": 200, "maxPlayersPerRoom": 40, "maxSocketsPerAddress": 80, "messagesPerSecond": 10 },
+  "cloudflare": {
+    "enabled": false,
+    "apiToken": "",
+    "zoneId": "",
+    "recordName": "",
+    "proxied": false,
+    "ttl": 60,
+    "checkEverySeconds": 300
+  }
+}
