@@ -1,0 +1,18 @@
+# Ignore all Markdown files except README.md
+*.md
+!README.md
+!readme.md
+
+# Office documents and PDFs
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.xlsx
+*.pdf
+
+# Server: private files, local data, generated deploy files, and packages (never commit)
+_server/secrets/
+_server/data/
+_server/deploy/out/
+node_modules/

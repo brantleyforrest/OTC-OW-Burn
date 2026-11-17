@@ -1,0 +1,791 @@
+/* Shared theme for tool pages. Matches the portal styling in index.html. */
+:root {
+    --primary-navy: #0c2340;
+    --deep-space: #060b14;
+    --surface-card: #0d1726;
+    --surface-hover: #132238;
+    --border-subtle: #1c2e4a;
+    --border-accent: #244c8c;
+    --accent-blue: #3a82f7;
+    --accent-gold: #c59b3c;
+    --gold-glow: rgba(197, 155, 60, 0.25);
+    --text-main: #f0f4fa;
+    --text-muted: #94a3b8;
+    --text-dim: #64748b;
+    --badge-green: #10b981;
+    --badge-amber: #f59e0b;
+    --badge-blue: #38bdf8;
+    --frame-eci: #60a5fa;
+    --frame-ecef: #fb923c;
+    --frame-ric: #f87171;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    --nav-h: 3.25rem;
+    --aside-w: 24.5rem;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--font-sans);
+    background-color: var(--deep-space);
+    color: var(--text-main);
+    min-height: 100vh;
+    line-height: 1.6;
+    overflow-x: hidden;
+    background-image:
+        radial-gradient(circle at 15% 15%, rgba(24, 76, 140, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(197, 155, 60, 0.08) 0%, transparent 35%);
+    background-attachment: fixed;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Top navigation, as on the portal pages */
+.top-nav {
+    background: rgba(6, 11, 20, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-subtle);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav-inner {
+    padding: 0 1.5rem;
+    height: var(--nav-h);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-decoration: none;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    flex-shrink: 0;
+}
+
+.nav-brand:hover { opacity: 0.9; }
+
+.nav-brand-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(36, 76, 140, 0.25);
+    border: 1px solid var(--border-accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-blue);
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 0.9rem;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+    position: relative;
+    white-space: nowrap;
+}
+
+.nav-link:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-link.active {
+    color: #ffffff;
+    background: rgba(36, 76, 140, 0.3);
+    border: 1px solid var(--border-accent);
+    font-weight: 600;
+}
+
+.nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background: var(--accent-gold);
+    border-radius: 2px;
+}
+
+.nav-link-ext { color: var(--text-dim); }
+.nav-link-ext:hover { color: #ffffff; }
+.nav-text-short { display: none; }
+
+/* Tool title, placed in the navigation bar */
+.tool-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    flex: 1 1 auto;
+    padding-left: 0.9rem;
+    margin-left: 0.15rem;
+    border-left: 1px solid var(--border-subtle);
+}
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    text-decoration: none;
+}
+
+.back-link:hover { color: #ffffff; }
+
+.tool-heading h1 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: linear-gradient(135deg, #ffffff 40%, #c5d4ea 80%, var(--accent-gold) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Tool workspace. Small screens stack; large screens use the rules below. */
+.tool-main {
+    width: 100%;
+    padding: 0.5rem 1.5rem 1rem;
+    flex-grow: 1;
+}
+
+.tool-intro {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    line-height: 1.35;
+}
+
+.tool-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.6rem;
+    align-items: start;
+}
+
+.col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.tool-side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.panel.controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.45rem 0.75rem;
+    flex-shrink: 0;
+}
+
+.controls .btn { padding: 0.38rem 0.8rem; }
+.controls .check { font-size: 0.78rem; line-height: 1.35; }
+.controls .control-label { margin-bottom: 0; }
+.controls input[type="range"] { display: block; margin: 0.15rem 0; }
+
+.ctl-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem 1rem;
+}
+
+.ctl-row .buttons { display: flex; gap: 0.4rem; flex-shrink: 0; }
+.ctl-grow { flex: 1 1 10rem; min-width: 9rem; }
+
+.ctl-caption {
+    font-size: 0.74rem;
+    line-height: 1.35;
+    color: var(--text-dim);
+}
+
+@media (min-width: 700px) and (max-width: 1080px) {
+    .tool-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Large screens: the view and its controls stay on screen, with the panels beside them. */
+@media (min-width: 1081px) and (min-height: 600px) {
+    html { font-size: clamp(93.75%, 1.72vh, 112.5%); }
+
+    .tool-layout { grid-template-columns: minmax(0, 1fr) var(--aside-w); }
+
+    .tool-stage-col {
+        position: sticky;
+        top: calc(var(--nav-h) + 0.5rem);
+        height: calc(100vh - var(--nav-h) - 1.5rem - 1px);
+        height: calc(100dvh - var(--nav-h) - 1.5rem - 1px);
+    }
+
+    .tool-side {
+        min-height: calc(100vh - var(--nav-h) - 1.5rem - 1px);
+        min-height: calc(100dvh - var(--nav-h) - 1.5rem - 1px);
+    }
+
+    /* Any spare height is shared across the panels, not left in one place. */
+    .tool-side > .col > .panel { flex-grow: 1; }
+}
+
+/* Windows too narrow to fit the navigation and the title on one line */
+@media (max-width: 1080px) {
+    .top-nav { position: static; }
+
+    .nav-inner {
+        flex-wrap: wrap;
+        height: auto;
+        min-height: var(--nav-h);
+        row-gap: 0;
+    }
+
+    .nav-brand, .nav-links { min-height: var(--nav-h); }
+
+    .tool-heading {
+        order: 3;
+        flex: 1 1 100%;
+        padding: 0 0 0.45rem;
+        margin: 0;
+        border-left: 0;
+    }
+
+    .tool-heading h1 { white-space: normal; font-size: 1.2rem; }
+}
+
+/* Tool view: new tools use these. See _template/README.md. */
+.tool-view {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tool-canvas-box {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #03060c;
+}
+
+.tool-canvas-box canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.tool-labels {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.tool-label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    white-space: nowrap;
+    font-size: 0.74rem;
+    line-height: 1.2;
+    color: var(--text-main);
+    text-shadow: 0 0 4px #000, 0 0 2px #000, 0 1px 3px #000;
+    will-change: transform;
+}
+
+.tool-label b { font-weight: 600; }
+.tool-label .hint { color: #cbd5e1; margin-left: 0.3rem; }
+
+.tool-hud {
+    position: absolute;
+    top: 0.7rem;
+    left: 0.7rem;
+    max-width: min(26rem, calc(100% - 1.4rem));
+    padding: 0.5rem 0.7rem;
+    border-radius: 8px;
+    background: rgba(6, 11, 20, 0.78);
+    border: 1px solid var(--border-subtle);
+    font-size: 0.8rem;
+    line-height: 1.45;
+    pointer-events: none;
+}
+
+.tool-hint {
+    position: absolute;
+    right: 0.7rem;
+    bottom: 0.6rem;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    pointer-events: none;
+}
+
+.tool-status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+    font-size: 0.92rem;
+}
+
+.panel-text { font-size: 0.84rem; line-height: 1.45; color: var(--text-main); }
+.panel-text.muted { font-size: 0.78rem; line-height: 1.4; color: var(--text-muted); }
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem 0.8rem;
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+
+.stat-value {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #ffffff;
+    white-space: nowrap;
+}
+
+.ctl-checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.1rem 0.8rem;
+}
+
+/* Live equations: the name and result, then the symbols, then the current values */
+.fraction {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.fraction > span:first-child {
+    border-bottom: 1px solid var(--text-muted);
+    padding: 0 0.4rem 0.1rem;
+    align-self: stretch;
+}
+
+.fraction > span:last-child { padding: 0.1rem 0.4rem 0; }
+
+.panel.eq-panel {
+    display: flex;
+    flex-direction: column;
+}
+
+.eq-list {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Spare height is shared evenly, with each row centered between its dividers. */
+.eq-row {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.28rem 0;
+}
+
+.eq-row:first-child { padding-top: 0; }
+.eq-row + .eq-row { border-top: 1px solid var(--border-subtle); }
+
+.eq-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+.eq-name {
+    min-width: 0;
+    font-size: 0.74rem;
+    line-height: 1.3;
+    color: var(--text-muted);
+}
+
+.eq-name b { font-weight: 600; color: var(--text-main); }
+
+.eq-result {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: #ffffff;
+    white-space: nowrap;
+}
+
+.eq-work {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.05rem 0.35rem;
+    margin-top: 0.1rem;
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    line-height: 1.3;
+    color: var(--text-main);
+}
+
+.eq-work > span { white-space: nowrap; }
+.eq-work sub { font-size: 0.72em; line-height: 0; }
+
+/* The symbols and the current values. The set width lines up the values from row to row. */
+.eq-sym { display: inline-block; min-width: 20ch; }
+
+.eq-sym:has(> .fraction),
+.eq-val:has(> .fraction) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.eq-constants {
+    margin-top: 0.4rem;
+    padding-top: 0.32rem;
+    border-top: 1px solid var(--border-subtle);
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--text-dim);
+}
+
+@media (max-width: 1080px), (max-height: 599px) {
+    .tool-view { display: block; }
+    .tool-canvas-box { height: clamp(340px, 62vh, 640px); height: clamp(340px, 62svh, 640px); }
+}
+
+@media (max-width: 640px), (orientation: landscape) and (max-height: 500px) and (hover: none) and (pointer: coarse) {
+    .tool-canvas-box { height: clamp(300px, 108vw, 62svh); }
+    .tool-hud { position: static; max-width: none; margin-top: 0.4rem; font-size: 0.74rem; }
+    .tool-hint { display: none; }
+    .tool-label .hint { display: none; }
+}
+
+/* Panels */
+.panel {
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+.panel.accent::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--border-accent), var(--accent-gold));
+}
+
+.panel-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 0.55rem;
+}
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.55rem 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-hover);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn:hover { border-color: var(--border-accent); background: #18304f; }
+
+.btn.primary {
+    background: linear-gradient(135deg, #184c8c 0%, #2563eb 100%);
+    border-color: transparent;
+    color: #ffffff;
+    min-width: 6.2rem;
+}
+
+.btn.primary:hover {
+    background: linear-gradient(135deg, #1d58a3 0%, #3b82f6 100%);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+
+.btn:disabled,
+.btn:disabled:hover {
+    background: var(--surface-hover);
+    border-color: var(--border-subtle);
+    color: var(--text-muted);
+    box-shadow: none;
+    opacity: 0.6;
+    cursor: default;
+}
+
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+    outline: 2px solid var(--badge-blue);
+    outline-offset: 2px;
+}
+
+/* Segmented control */
+.segmented {
+    display: flex;
+    border: 1px solid var(--border-subtle);
+    border-radius: 7px;
+    overflow: hidden;
+}
+
+.segmented button {
+    flex: 1;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.45rem 0.6rem;
+    background: transparent;
+    color: var(--text-muted);
+    border: 0;
+    border-right: 1px solid var(--border-subtle);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.segmented button:last-child { border-right: 0; }
+.segmented button:hover { color: #ffffff; background: rgba(255, 255, 255, 0.04); }
+
+.segmented button[aria-pressed="true"] {
+    background: rgba(36, 76, 140, 0.45);
+    color: #ffffff;
+}
+
+/* Form controls */
+.control-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 0.2rem;
+}
+
+.control-value {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--text-main);
+    white-space: nowrap;
+}
+
+input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent-gold);
+    cursor: pointer;
+}
+
+.check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.84rem;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.check input {
+    accent-color: var(--accent-gold);
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
+
+.mono { font-family: var(--font-mono); }
+
+/* Footer */
+footer.site-footer {
+    border-top: 1px solid var(--border-subtle);
+    padding: 0.9rem 1.5rem;
+    background: #040811;
+    text-align: center;
+    font-size: 0.88rem;
+    color: var(--text-main);
+    margin-top: auto;
+    width: 100%;
+}
+
+/* Phone layout */
+@media (max-width: 640px), (orientation: landscape) and (max-height: 500px) and (hover: none) and (pointer: coarse) {
+    .nav-inner {
+        padding: 0 1rem;
+        gap: 0.5rem;
+    }
+
+    .nav-brand {
+        font-size: 0.95rem;
+        gap: 0.5rem;
+    }
+
+    .nav-brand-icon {
+        width: 28px;
+        height: 28px;
+    }
+
+    .nav-links { gap: 0.25rem; }
+
+    .nav-link {
+        padding: 0.4rem 0.55rem;
+        font-size: 0.78rem;
+        gap: 0.3rem;
+    }
+
+    .nav-text-full { display: none; }
+    .nav-text-short { display: inline; }
+    .tool-main { padding: 0.25rem 1rem 1rem; }
+    .ctl-grow { flex-basis: 100%; }
+}
+
+/* Phones: the view stays on screen and only the other content scrolls. The navigation
+   becomes the back button and the tool name. An upright phone puts the view on top, and a
+   rotated phone puts it on the left. The touch conditions keep laptops and desktops out,
+   however small the window. See _template/README.md. */
+@media (max-width: 640px) and (orientation: portrait),
+       (orientation: landscape) and (max-height: 500px) and (hover: none) and (pointer: coarse) {
+    :root { --nav-h: 2.75rem; }
+
+    .top-nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: var(--deep-space);
+    }
+
+    .nav-brand, .nav-links { display: none; }
+
+    .nav-inner {
+        flex-wrap: nowrap;
+        height: var(--nav-h);
+        min-height: 0;
+        padding: 0 1rem 0 0;
+    }
+
+    .tool-heading {
+        order: 0;
+        flex: 1 1 auto;
+        gap: 0;
+        padding: 0;
+    }
+
+    .back-link {
+        justify-content: center;
+        width: var(--nav-h);
+        height: var(--nav-h);
+    }
+
+    .back-link svg { width: 20px; height: 20px; }
+    .tool-heading h1 { white-space: nowrap; font-size: 1.05rem; }
+
+    .tool-canvas-box {
+        position: fixed;
+        top: var(--nav-h);
+        left: 0;
+        z-index: 50;
+        border-radius: 0;
+    }
+}
+
+@media (max-width: 640px) and (orientation: portrait) {
+    :root { --tool-view-h: min(48svh, 100vw); }
+
+    /* While a number is being typed, the view shrinks to leave room above the keyboard. */
+    :root:has(input[type="number"]:focus) { --tool-view-h: 24svh; }
+
+    html { scroll-padding-top: calc(var(--nav-h) + var(--tool-view-h) + 0.5rem); }
+
+    .tool-canvas-box {
+        width: 100%;
+        height: var(--tool-view-h);
+        border-width: 0 0 1px;
+    }
+
+    .tool-main { padding: calc(var(--nav-h) + var(--tool-view-h) + 0.5rem) 1rem 1rem; }
+}
+
+@media (orientation: landscape) and (max-height: 500px) and (hover: none) and (pointer: coarse) {
+    :root { --tool-view-w: 46vw; }
+
+    .top-nav { right: auto; width: var(--tool-view-w); }
+
+    .tool-canvas-box {
+        width: var(--tool-view-w);
+        height: calc(100svh - var(--nav-h));
+        border-width: 0 1px 0 0;
+    }
+
+    .tool-main { padding: 0.5rem 1rem 1rem calc(var(--tool-view-w) + 1rem); }
+    .tool-side { grid-template-columns: minmax(0, 1fr); }
+}
